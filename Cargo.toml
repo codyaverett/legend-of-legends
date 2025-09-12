@@ -1,0 +1,54 @@
+[package]
+name = "legends-of-legend"
+version = "0.2.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A 2D side-scrolling mech combat game"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/legends-of-legend"
+
+[dependencies]
+# SDL2 for cross-platform window, input, and audio
+sdl2 = "0.37"
+
+# Math and linear algebra
+glam = { version = "0.25", features = ["serde"] }
+
+# Entity Component System
+hecs = "0.10"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Serialization for configs and save files
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ron = "0.8"
+
+# Random number generation
+rand = "0.8"
+
+# Time handling
+chrono = "0.4"
+
+[dev-dependencies]
+# Testing utilities
+criterion = "0.5"  # Benchmarking
+pretty_assertions = "1.4"  # Better test assertions
+
+[profile.dev]
+opt-level = 1  # Enable some optimizations in debug mode for better performance
+
+[profile.release]
+opt-level = 3
+lto = true  # Link-time optimization
+codegen-units = 1  # Better optimization at cost of compile time
+
+[features]
+default = []
+dev = []  # Development features like hot-reload
