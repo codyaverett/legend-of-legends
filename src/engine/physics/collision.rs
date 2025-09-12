@@ -1,5 +1,5 @@
-use glam::Vec2;
 use crate::engine::core::Rect;
+use glam::Vec2;
 
 #[derive(Debug, Clone)]
 pub enum Collider {
@@ -29,25 +29,25 @@ impl Collider {
                 let distance = (pos2 - pos1).length();
                 distance < r1 + r2
             }
-            (Collider::Box { size }, Collider::Circle { radius }) |
-            (Collider::Circle { radius }, Collider::Box { size }) => {
+            (Collider::Box { size }, Collider::Circle { radius })
+            | (Collider::Circle { radius }, Collider::Box { size }) => {
                 let (box_pos, circle_pos) = if matches!(self, Collider::Box { .. }) {
                     (pos1, pos2)
                 } else {
                     (pos2, pos1)
                 };
-                
+
                 let rect = Rect::new(
                     box_pos.x - size.x / 2.0,
                     box_pos.y - size.y / 2.0,
                     size.x,
                     size.y,
                 );
-                
+
                 let closest_x = circle_pos.x.clamp(rect.x, rect.x + rect.width);
                 let closest_y = circle_pos.y.clamp(rect.y, rect.y + rect.height);
                 let closest = Vec2::new(closest_x, closest_y);
-                
+
                 (circle_pos - closest).length() < *radius
             }
         }
@@ -71,11 +71,11 @@ impl RigidBody {
             drag: 0.1,
         }
     }
-    
+
     pub fn apply_force(&mut self, force: Vec2) {
         self.acceleration += force / self.mass;
     }
-    
+
     pub fn update(&mut self, delta_time: f32) {
         self.velocity += self.acceleration * delta_time;
         self.velocity *= 1.0 - self.drag * delta_time;

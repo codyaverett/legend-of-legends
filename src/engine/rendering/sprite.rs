@@ -1,5 +1,5 @@
-use glam::Vec2;
 use crate::engine::core::{Color, Rect};
+use glam::Vec2;
 
 #[derive(Debug, Clone)]
 pub struct Sprite {
@@ -16,7 +16,7 @@ impl Sprite {
             source_rect: None,
         }
     }
-    
+
     pub fn with_source_rect(mut self, rect: Rect) -> Self {
         self.source_rect = Some(rect);
         self

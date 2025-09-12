@@ -16,31 +16,27 @@ impl Transform {
             scale: Vec2::ONE,
         }
     }
-    
+
     pub fn with_rotation(mut self, rotation: f32) -> Self {
         self.rotation = rotation;
         self
     }
-    
+
     pub fn with_scale(mut self, scale: Vec2) -> Self {
         self.scale = scale;
         self
     }
-    
+
     pub fn translate(&mut self, delta: Vec2) {
         self.position += delta;
     }
-    
+
     pub fn rotate(&mut self, delta: f32) {
         self.rotation += delta;
     }
-    
+
     pub fn to_matrix(&self) -> glam::Mat3 {
-        glam::Mat3::from_scale_angle_translation(
-            self.scale,
-            self.rotation,
-            self.position,
-        )
+        glam::Mat3::from_scale_angle_translation(self.scale, self.rotation, self.position)
     }
 }
 

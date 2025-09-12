@@ -19,7 +19,7 @@ impl Timer {
             frame_count: 0,
         }
     }
-    
+
     pub fn tick(&mut self) {
         let now = Instant::now();
         self.delta = now - self.last_frame;
@@ -27,15 +27,15 @@ impl Timer {
         self.accumulated += self.delta;
         self.frame_count += 1;
     }
-    
+
     pub fn delta_seconds(&self) -> f32 {
         self.delta.as_secs_f32()
     }
-    
+
     pub fn elapsed_seconds(&self) -> f32 {
         self.accumulated.as_secs_f32()
     }
-    
+
     pub fn fps(&self) -> f32 {
         if self.accumulated.as_secs_f32() > 0.0 {
             self.frame_count as f32 / self.accumulated.as_secs_f32()

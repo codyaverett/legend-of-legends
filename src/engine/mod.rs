@@ -1,6 +1,6 @@
 pub mod core;
-pub mod platform;
 pub mod physics;
+pub mod platform;
 pub mod rendering;
 
 use anyhow::Result;
@@ -17,7 +17,7 @@ impl Engine {
     pub fn new(title: &str, width: u32, height: u32) -> Result<Self> {
         let platform = platform::Platform::new(title, width, height)?;
         let renderer = rendering::Renderer::new(&platform)?;
-        
+
         Ok(Self {
             platform,
             renderer,
@@ -32,19 +32,19 @@ impl Engine {
         F: FnMut(&mut Engine, f32),
     {
         let mut last_time = std::time::Instant::now();
-        
+
         while self.running {
             let current_time = std::time::Instant::now();
             self.delta_time = current_time.duration_since(last_time).as_secs_f32();
             last_time = current_time;
-            
+
             self.platform.handle_events(&mut self.running)?;
-            
+
             update(self, self.delta_time);
-            
+
             self.renderer.present();
         }
-        
+
         Ok(())
     }
 }

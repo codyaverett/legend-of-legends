@@ -1,5 +1,5 @@
-use glam::Vec2;
 use crate::engine::core::{Color, Rect};
+use glam::Vec2;
 
 pub const TILE_SIZE: f32 = 32.0;
 
@@ -28,7 +28,7 @@ impl Tile {
             TileType::Wall => (true, Color::new(100, 100, 100, 255)),
             TileType::Destructible => (true, Color::new(160, 140, 120, 255)),
         };
-        
+
         Self {
             tile_type,
             solid,
@@ -54,15 +54,15 @@ impl Level {
             spawn_point: Vec2::new(100.0, 100.0),
         }
     }
-    
+
     pub fn from_string(level_str: &str) -> Self {
         let lines: Vec<&str> = level_str.lines().collect();
         let height = lines.len();
         let width = lines.iter().map(|l| l.len()).max().unwrap_or(0);
-        
+
         let mut tiles = vec![vec![Tile::new(TileType::Empty); width]; height];
         let mut spawn_point = Vec2::new(100.0, 100.0);
-        
+
         for (y, line) in lines.iter().enumerate() {
             for (x, ch) in line.chars().enumerate() {
                 let tile_type = match ch {
@@ -79,7 +79,7 @@ impl Level {
                 tiles[y][x] = Tile::new(tile_type);
             }
         }
-        
+
         Self {
             tiles,
             width,
@@ -87,7 +87,7 @@ impl Level {
             spawn_point,
         }
     }
-    
+
     pub fn get_tile(&self, x: usize, y: usize) -> Option<&Tile> {
         if x < self.width && y < self.height {
             Some(&self.tiles[y][x])
@@ -95,19 +95,19 @@ impl Level {
             None
         }
     }
-    
+
     pub fn get_tile_at_position(&self, pos: Vec2) -> Option<&Tile> {
         let x = (pos.x / TILE_SIZE) as usize;
         let y = (pos.y / TILE_SIZE) as usize;
         self.get_tile(x, y)
     }
-    
+
     pub fn check_collision(&self, rect: Rect) -> bool {
         let start_x = ((rect.x / TILE_SIZE).floor() as usize).max(0);
         let end_x = (((rect.x + rect.width) / TILE_SIZE).ceil() as usize).min(self.width);
         let start_y = ((rect.y / TILE_SIZE).floor() as usize).max(0);
         let end_y = (((rect.y + rect.height) / TILE_SIZE).ceil() as usize).min(self.height);
-        
+
         for y in start_y..end_y {
             for x in start_x..end_x {
                 if let Some(tile) = self.get_tile(x, y) {
@@ -127,7 +127,7 @@ impl Level {
         }
         false
     }
-    
+
     pub fn test_level_1() -> Self {
         Self::from_string(
             "\
@@ -149,7 +149,7 @@ impl Level {
             ##################################################\n\
             ##################################################\n\
             ##################################################\n\
-            "
+            ",
         )
     }
 }

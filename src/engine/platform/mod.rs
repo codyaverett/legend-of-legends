@@ -20,7 +20,7 @@ impl Platform {
         let window = Window::new(&sdl_context, title, width, height)?;
         let event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
         let input = InputState::new();
-        
+
         Ok(Self {
             sdl_context,
             window,
@@ -28,27 +28,38 @@ impl Platform {
             input,
         })
     }
-    
+
     pub fn handle_events(&mut self, running: &mut bool) -> Result<()> {
         use sdl2::event::Event;
         use sdl2::keyboard::Keycode;
-        
+
         self.input.update();
-        
+
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => *running = false,
-                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => *running = false,
-                Event::KeyDown { keycode: Some(key), .. } => {
+                Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => *running = false,
+                Event::KeyDown {
+                    keycode: Some(key), ..
+                } => {
                     self.input.handle_key_down(key);
                 }
-                Event::KeyUp { keycode: Some(key), .. } => {
+                Event::KeyUp {
+                    keycode: Some(key), ..
+                } => {
                     self.input.handle_key_up(key);
                 }
-                Event::MouseButtonDown { x, y, mouse_btn, .. } => {
+                Event::MouseButtonDown {
+                    x, y, mouse_btn, ..
+                } => {
                     self.input.handle_mouse_down(x, y, mouse_btn);
                 }
-                Event::MouseButtonUp { x, y, mouse_btn, .. } => {
+                Event::MouseButtonUp {
+                    x, y, mouse_btn, ..
+                } => {
                     self.input.handle_mouse_up(x, y, mouse_btn);
                 }
                 Event::MouseMotion { x, y, .. } => {
@@ -57,7 +68,7 @@ impl Platform {
                 _ => {}
             }
         }
-        
+
         Ok(())
     }
 }
