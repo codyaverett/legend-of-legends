@@ -19,7 +19,13 @@ impl Player {
 pub struct PlayerController {
     pub speed: f32,
     pub jump_force: f32,
+    pub double_jump_force: f32,
     pub is_grounded: bool,
+    pub jump_count: u32,
+    pub max_jumps: u32,
+    pub is_spinning: bool,
+    pub spin_rotation: f32,
+    pub spin_speed: f32,
 }
 
 impl PlayerController {
@@ -27,7 +33,13 @@ impl PlayerController {
         Self {
             speed: 200.0,
             jump_force: 500.0,
+            double_jump_force: 400.0,
             is_grounded: false,
+            jump_count: 0,
+            max_jumps: 2,
+            is_spinning: false,
+            spin_rotation: 0.0,
+            spin_speed: 720.0, // 720 degrees per second (2 full rotations)
         }
     }
 }
@@ -59,18 +71,40 @@ pub fn player_movement_system(
             movement.x += 1.0;
         }
 
-        if controller.is_grounded {
-            if input.is_key_pressed(Keycode::Space)
-                || input.is_key_pressed(Keycode::W)
-                || input.is_key_pressed(Keycode::Up)
-            {
+        // Handle jumping (first jump from ground, second jump in air)
+        if input.is_key_pressed(Keycode::Space)
+            || input.is_key_pressed(Keycode::W)
+            || input.is_key_pressed(Keycode::Up)
+        {
+            if controller.is_grounded {
+                // First jump from ground
                 body.velocity.y = -controller.jump_force;
                 controller.is_grounded = false;
+                controller.jump_count = 1;
+            } else if controller.jump_count < controller.max_jumps {
+                // Double jump in air with booster effect
+                body.velocity.y = -controller.double_jump_force;
+                controller.jump_count += 1;
+                controller.is_spinning = true;
+                controller.spin_rotation = 0.0;
             }
         }
 
         movement = movement.normalize_or_zero();
         body.velocity.x = movement.x * controller.speed;
+
+        // Handle spin flip animation during double jump
+        if controller.is_spinning {
+            controller.spin_rotation += controller.spin_speed * delta_time;
+            transform.rotation = controller.spin_rotation.to_radians();
+            
+            // Complete spin after one full rotation
+            if controller.spin_rotation >= 360.0 {
+                controller.is_spinning = false;
+                controller.spin_rotation = 0.0;
+                transform.rotation = 0.0;
+            }
+        }
 
         body.apply_force(Vec2::new(0.0, 800.0));
 
@@ -105,6 +139,13 @@ pub fn player_movement_system(
         } else {
             if body.velocity.y > 0.0 {
                 controller.is_grounded = true;
+                controller.jump_count = 0;
+                // Reset spin when landing
+                if controller.is_spinning {
+                    controller.is_spinning = false;
+                    controller.spin_rotation = 0.0;
+                    transform.rotation = 0.0;
+                }
             }
             body.velocity.y = 0.0;
         }
@@ -118,6 +159,13 @@ pub fn player_movement_system(
 
         if level.check_collision(ground_check) && body.velocity.y >= 0.0 {
             controller.is_grounded = true;
+            controller.jump_count = 0;
+            // Reset spin when landing
+            if controller.is_spinning {
+                controller.is_spinning = false;
+                controller.spin_rotation = 0.0;
+                transform.rotation = 0.0;
+            }
         }
     }
 }

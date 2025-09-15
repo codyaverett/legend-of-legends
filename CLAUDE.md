@@ -1,0 +1,1 @@
+- When we are adding new features try to keep the systems modular so they might be reused in other games too and keep documentation up to date
