@@ -13,6 +13,7 @@ pub struct Enemy {
     pub shoot_timer: f32,
     pub projectile_speed: f32,
     pub damage: f32,
+    pub health_bar_timer: f32,
 }
 
 impl Enemy {
@@ -21,11 +22,12 @@ impl Enemy {
             size: Vec2::new(32.0, 48.0),
             health: 50.0,
             max_health: 50.0,
-            attack_range: 500.0,
-            shoot_cooldown: 1.5,
+            attack_range: 600.0,  // Increased range
+            shoot_cooldown: 2.0,  // Slightly slower fire rate for balance
             shoot_timer: 0.0,
-            projectile_speed: 300.0,
+            projectile_speed: 400.0,  // Increased projectile speed
             damage: 10.0,
+            health_bar_timer: 0.0,
         }
     }
 
@@ -41,6 +43,20 @@ impl Enemy {
         if self.shoot_timer > 0.0 {
             self.shoot_timer -= delta_time;
         }
+    }
+    
+    pub fn show_health_bar(&mut self) {
+        self.health_bar_timer = 3.0; // Show health bar for 3 seconds
+    }
+    
+    pub fn update_health_bar_timer(&mut self, delta_time: f32) {
+        if self.health_bar_timer > 0.0 {
+            self.health_bar_timer -= delta_time;
+        }
+    }
+    
+    pub fn should_show_health_bar(&self) -> bool {
+        self.health_bar_timer > 0.0
     }
 }
 
@@ -67,14 +83,26 @@ impl EnemyController {
         }
     }
 
-    pub fn update_target(&mut self, player_pos: Vec2, enemy_pos: Vec2, attack_range: f32) {
+    pub fn update_target(&mut self, player_pos: Vec2, enemy_pos: Vec2, attack_range: f32, player_velocity: Option<Vec2>, projectile_speed: f32) {
         let distance = (player_pos - enemy_pos).length();
         
         if distance <= attack_range {
-            self.target_position = Some(player_pos);
+            // Calculate lead position for better aiming
+            let mut aim_position = player_pos;
+            
+            // If player is moving, predict where they'll be
+            if let Some(vel) = player_velocity {
+                if vel.length() > 10.0 {  // Only lead if player is moving significantly
+                    let time_to_target = distance / projectile_speed;
+                    // Add predicted position based on player velocity
+                    aim_position += vel * time_to_target * 0.5; // 0.5 factor for partial prediction
+                }
+            }
+            
+            self.target_position = Some(aim_position);
             self.state = EnemyState::Targeting;
             
-            let direction = (player_pos - enemy_pos).normalize_or_zero();
+            let direction = (aim_position - enemy_pos).normalize_or_zero();
             if direction != Vec2::ZERO {
                 self.facing_direction = direction;
             }
@@ -95,24 +123,31 @@ pub fn enemy_ai_system(
 ) -> Vec<(Vec2, Vec2, f32, f32)> {
     let mut projectiles_to_spawn = Vec::new();
     
-    let mut player_pos = None;
-    for (_entity, transform) in world.query::<&Transform>()
+    let mut player_info = None;
+    for (_entity, (transform, body)) in world.query::<(&Transform, &RigidBody)>()
         .with::<&crate::systems::player::Player>()
         .iter() 
     {
-        player_pos = Some(transform.position);
+        player_info = Some((transform.position, body.velocity));
         break;
     }
 
-    if let Some(player_position) = player_pos {
+    if let Some((player_position, player_velocity)) = player_info {
         for (_entity, (enemy, transform, controller)) in world.query_mut::<(
             &mut Enemy,
             &Transform,
             &mut EnemyController,
         )>() {
             enemy.update_timer(delta_time);
+            enemy.update_health_bar_timer(delta_time);
             
-            controller.update_target(player_position, transform.position, enemy.attack_range);
+            controller.update_target(
+                player_position, 
+                transform.position, 
+                enemy.attack_range,
+                Some(player_velocity),
+                enemy.projectile_speed
+            );
             
             if matches!(controller.state, EnemyState::Targeting) && enemy.can_shoot() {
                 let shoot_dir = controller.get_shoot_direction();

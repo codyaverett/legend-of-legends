@@ -230,6 +230,7 @@ pub fn projectile_system(
     for (proj_entity, enemy_entity, damage) in enemy_hits {
         if let Ok(mut enemy) = world.get::<&mut Enemy>(enemy_entity) {
             enemy.health = (enemy.health - damage).max(0.0);
+            enemy.show_health_bar(); // Show health bar when hit
         }
         expired_projectiles.push(proj_entity);
     }

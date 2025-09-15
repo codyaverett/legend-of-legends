@@ -13,10 +13,11 @@ use engine::rendering::Sprite;
 use engine::physics::RigidBody as RB;
 use game::states::GameState;
 use game::{DayNightCycle, Level, UIManager, TILE_SIZE};
-use systems::player::{player_movement_system, player_shooting_system, Player, PlayerController, ProjectileSpawnData};
+use systems::player::{player_movement_system, player_shooting_system, Player, PlayerController};
 use systems::enemy::{Enemy, EnemyController, enemy_ai_system, enemy_physics_system};
 use systems::projectile::{Projectile, ProjectileOwner, projectile_system};
 use systems::particles::{update_particles};
+use systems::enemy_spawner::EnemySpawner;
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -44,18 +45,23 @@ fn main() -> Result<()> {
         PlayerController::new(),
     ));
 
-    // Spawn enemies at various positions
-    let enemy_positions = vec![
-        Vec2::new(spawn_pos.x + 400.0, spawn_pos.y),
-        Vec2::new(spawn_pos.x - 300.0, spawn_pos.y),
-        Vec2::new(spawn_pos.x + 700.0, spawn_pos.y - 100.0),
+    // Define spawn points for enemies (off-screen left and right)
+    let spawn_points = vec![
+        Vec2::new(spawn_pos.x - 800.0, spawn_pos.y),  // Far left
+        Vec2::new(spawn_pos.x + 800.0, spawn_pos.y),  // Far right
+        Vec2::new(spawn_pos.x - 1000.0, spawn_pos.y - 100.0), // Upper left
+        Vec2::new(spawn_pos.x + 1000.0, spawn_pos.y - 100.0), // Upper right
     ];
-
-    for pos in enemy_positions {
+    
+    let mut enemy_spawner = EnemySpawner::new(spawn_points);
+    
+    // Spawn a few initial enemies
+    for i in 0..3 {
+        let offset = (i as f32 - 1.0) * 300.0;
         engine.world.spawn((
             Enemy::new(),
-            Transform::new(pos),
-            Sprite::new(Vec2::new(32.0, 48.0), Color::new(255, 50, 50, 255)), // Red enemy
+            Transform::new(Vec2::new(spawn_pos.x + offset, spawn_pos.y)),
+            Sprite::new(Vec2::new(32.0, 48.0), Color::new(255, 50, 50, 255)),
             RigidBody::new(1.0),
             Collider::Box {
                 size: Vec2::new(32.0, 48.0),
@@ -84,6 +90,9 @@ fn main() -> Result<()> {
             delta_time,
         );
 
+        // Update enemy spawner
+        enemy_spawner.update(&mut engine.world, delta_time);
+        
         // Update enemy physics
         enemy_physics_system(&mut engine.world, &level, delta_time);
 
@@ -265,6 +274,84 @@ fn main() -> Result<()> {
         // Layer 8: Entities (player, enemies)
         for (_entity, (transform, sprite)) in engine.world.query::<(&Transform, &Sprite)>().iter() {
             engine.renderer.draw_sprite(sprite, transform);
+        }
+
+        // Layer 8.5: Enemy health bars (rendered above enemies but below UI)
+        for (_entity, (enemy, transform)) in engine.world.query::<(&Enemy, &Transform)>().iter() {
+            if enemy.should_show_health_bar() && enemy.health > 0.0 {
+                // Calculate health bar position (above enemy)
+                let bar_width = 40.0;
+                let bar_height = 4.0;
+                let bar_offset_y = enemy.size.y / 2.0 + 10.0;
+                let bar_pos = Vec2::new(
+                    transform.position.x - bar_width / 2.0,
+                    transform.position.y - bar_offset_y
+                );
+                
+                // Draw background (dark red)
+                let bg_transform = Transform::new(Vec2::new(
+                    transform.position.x,
+                    transform.position.y - bar_offset_y
+                ));
+                let bg_sprite = Sprite::new(
+                    Vec2::new(bar_width, bar_height),
+                    Color::new(80, 20, 20, 200)
+                );
+                engine.renderer.draw_sprite(&bg_sprite, &bg_transform);
+                
+                // Draw health fill (bright red)
+                let health_ratio = enemy.health / enemy.max_health;
+                let fill_width = bar_width * health_ratio;
+                if fill_width > 0.0 {
+                    let fill_transform = Transform::new(Vec2::new(
+                        transform.position.x - (bar_width - fill_width) / 2.0,
+                        transform.position.y - bar_offset_y
+                    ));
+                    let fill_sprite = Sprite::new(
+                        Vec2::new(fill_width, bar_height),
+                        Color::new(255, 60, 60, 200)
+                    );
+                    engine.renderer.draw_sprite(&fill_sprite, &fill_transform);
+                }
+                
+                // Draw border (white)
+                let border_thickness = 1.0;
+                // Top border
+                let top_border = Sprite::new(
+                    Vec2::new(bar_width + border_thickness * 2.0, border_thickness),
+                    Color::new(255, 255, 255, 150)
+                );
+                let top_transform = Transform::new(Vec2::new(
+                    transform.position.x,
+                    transform.position.y - bar_offset_y - bar_height / 2.0 - border_thickness / 2.0
+                ));
+                engine.renderer.draw_sprite(&top_border, &top_transform);
+                
+                // Bottom border
+                let bottom_transform = Transform::new(Vec2::new(
+                    transform.position.x,
+                    transform.position.y - bar_offset_y + bar_height / 2.0 + border_thickness / 2.0
+                ));
+                engine.renderer.draw_sprite(&top_border, &bottom_transform);
+                
+                // Left border
+                let side_border = Sprite::new(
+                    Vec2::new(border_thickness, bar_height + border_thickness * 2.0),
+                    Color::new(255, 255, 255, 150)
+                );
+                let left_transform = Transform::new(Vec2::new(
+                    transform.position.x - bar_width / 2.0 - border_thickness / 2.0,
+                    transform.position.y - bar_offset_y
+                ));
+                engine.renderer.draw_sprite(&side_border, &left_transform);
+                
+                // Right border
+                let right_transform = Transform::new(Vec2::new(
+                    transform.position.x + bar_width / 2.0 + border_thickness / 2.0,
+                    transform.position.y - bar_offset_y
+                ));
+                engine.renderer.draw_sprite(&side_border, &right_transform);
+            }
         }
 
         // Layer 9: UI Elements (always on top)
