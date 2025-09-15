@@ -1,12 +1,15 @@
 use crate::engine::ui::*;
+use crate::engine::core::Color;
 use crate::engine::rendering::Renderer;
 use crate::systems::player::Player;
+use crate::systems::weapons::Weapon;
 use crate::game::DayNightCycle;
 use glam::Vec2;
 
 pub struct UIManager {
     pub health_bar: ProgressBar,
     pub energy_bar: ProgressBar,
+    pub weapon_display: WeaponDisplay,
     pub clock: ClockWidget,
     pub debug_overlay: DebugOverlay,
     screen_size: Vec2,
@@ -28,6 +31,8 @@ impl UIManager {
             100.0,
         );
         
+        let weapon_display = WeaponDisplay::new(Vec2::new(20.0, 90.0));
+        
         let clock_pos = Anchor::TopCenter.calculate_position(
             screen_size,
             Vec2::new(120.0, 40.0),
@@ -45,6 +50,7 @@ impl UIManager {
         Self {
             health_bar,
             energy_bar,
+            weapon_display,
             clock,
             debug_overlay,
             screen_size,
@@ -55,6 +61,7 @@ impl UIManager {
         &mut self,
         delta_time: f32,
         player: Option<&Player>,
+        weapon: Option<(&Weapon, usize)>,
         day_night_cycle: &DayNightCycle,
         entity_count: usize,
         player_pos: Option<Vec2>,
@@ -67,6 +74,11 @@ impl UIManager {
         
         self.health_bar.update(delta_time);
         self.energy_bar.update(delta_time);
+        
+        if let Some((weapon, index)) = weapon {
+            self.weapon_display.update_weapon(weapon, index);
+        }
+        self.weapon_display.update(delta_time);
         
         self.clock.update_time(day_night_cycle);
         self.clock.update(delta_time);
@@ -82,6 +94,10 @@ impl UIManager {
         
         if self.energy_bar.is_visible() {
             self.render_progress_bar(renderer, &self.energy_bar);
+        }
+        
+        if self.weapon_display.is_visible() {
+            self.render_weapon_display(renderer, &self.weapon_display);
         }
         
         if self.clock.is_visible() {
@@ -170,6 +186,67 @@ impl UIManager {
                     text.size,
                 );
             }
+        }
+    }
+    
+    fn render_weapon_display(&self, renderer: &mut Renderer, display: &WeaponDisplay) {
+        // Render background panel
+        renderer.draw_ui_rect(
+            display.background.position,
+            display.background.size,
+            display.background.background_color,
+        );
+        
+        if display.background.border_width > 0.0 {
+            renderer.draw_ui_rect_outline(
+                display.background.position,
+                display.background.size,
+                display.background.border_color,
+                display.background.border_width,
+            );
+        }
+        
+        // Render weapon name
+        renderer.draw_ui_text(
+            display.weapon_name_text.position,
+            &display.weapon_name_text.content,
+            display.weapon_name_text.color,
+            display.weapon_name_text.size,
+        );
+        
+        // Render ammo text
+        renderer.draw_ui_text(
+            display.ammo_text.position,
+            &display.ammo_text.content,
+            display.ammo_text.color,
+            display.ammo_text.size,
+        );
+        
+        // Render weapon slot indicators
+        for (i, slot) in display.weapon_slots.iter().enumerate() {
+            renderer.draw_ui_rect(
+                slot.position,
+                slot.size,
+                slot.background_color,
+            );
+            
+            if slot.border_width > 0.0 {
+                renderer.draw_ui_rect_outline(
+                    slot.position,
+                    slot.size,
+                    slot.border_color,
+                    slot.border_width,
+                );
+            }
+            
+            // Draw weapon number
+            let number_pos = slot.position + Vec2::new(slot.size.x / 2.0 - 5.0, 2.0);
+            renderer.draw_ui_text(
+                number_pos,
+                &(i + 1).to_string(),
+                Color::new(200, 200, 200, 255),
+                16,
+            );
         }
     }
     

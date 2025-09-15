@@ -13,7 +13,10 @@ use engine::rendering::Sprite;
 use engine::physics::RigidBody as RB;
 use game::states::GameState;
 use game::{DayNightCycle, Level, UIManager, TILE_SIZE};
-use systems::player::{player_movement_system, Player, PlayerController};
+use systems::player::{player_movement_system, player_shooting_system, Player, PlayerController, ProjectileSpawnData};
+use systems::enemy::{Enemy, EnemyController, enemy_ai_system, enemy_physics_system};
+use systems::projectile::{Projectile, ProjectileOwner, projectile_system};
+use systems::particles::{update_particles};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -41,6 +44,26 @@ fn main() -> Result<()> {
         PlayerController::new(),
     ));
 
+    // Spawn enemies at various positions
+    let enemy_positions = vec![
+        Vec2::new(spawn_pos.x + 400.0, spawn_pos.y),
+        Vec2::new(spawn_pos.x - 300.0, spawn_pos.y),
+        Vec2::new(spawn_pos.x + 700.0, spawn_pos.y - 100.0),
+    ];
+
+    for pos in enemy_positions {
+        engine.world.spawn((
+            Enemy::new(),
+            Transform::new(pos),
+            Sprite::new(Vec2::new(32.0, 48.0), Color::new(255, 50, 50, 255)), // Red enemy
+            RigidBody::new(1.0),
+            Collider::Box {
+                size: Vec2::new(32.0, 48.0),
+            },
+            EnemyController::new(),
+        ));
+    }
+
     info!("Created player entity: {:?}", player_entity);
     info!("Level size: {}x{}", level.width, level.height);
 
@@ -61,20 +84,79 @@ fn main() -> Result<()> {
             delta_time,
         );
 
-        if engine.platform.input.is_key_pressed(Keycode::Num1) {
+        // Update enemy physics
+        enemy_physics_system(&mut engine.world, &level, delta_time);
+
+        // Player shooting system
+        let player_projectiles = player_shooting_system(
+            &mut engine.world,
+            &engine.platform.input,
+            &engine.renderer.camera,
+            delta_time,
+        );
+        
+        for spawn_data in player_projectiles {
+            let mut body = RigidBody::new(0.1);
+            body.velocity = spawn_data.direction * spawn_data.weapon.projectile_force;
+            
+            let projectile = Projectile::from_weapon(&spawn_data.weapon, ProjectileOwner::Player);
+            
+            engine.world.spawn((
+                projectile.clone(),
+                Transform::new(spawn_data.position),
+                Sprite::new(projectile.size, projectile.color),
+                body,
+                Collider::Circle { radius: projectile.size.x / 2.0 },
+            ));
+        }
+
+        // Run enemy AI and spawn projectiles
+        let enemy_projectiles = enemy_ai_system(&mut engine.world, delta_time);
+        
+        for (pos, dir, speed, damage) in enemy_projectiles {
+            let mut body = RigidBody::new(0.1);
+            body.velocity = dir * speed;
+            
+            engine.world.spawn((
+                Projectile::new(damage, ProjectileOwner::Enemy),
+                Transform::new(pos),
+                Sprite::new(Vec2::new(8.0, 8.0), Color::new(255, 200, 0, 255)), // Yellow/orange projectile
+                body,
+                Collider::Circle { radius: 4.0 },
+            ));
+        }
+
+        // Update projectiles with physics and check collisions
+        let (expired_projectiles, new_particles) = projectile_system(&mut engine.world, &level, delta_time);
+        
+        // Spawn new particles from projectile impacts
+        for particle in new_particles {
+            systems::particles::spawn_particle(&mut engine.world, particle);
+        }
+        
+        // Update particles
+        let expired_particles = update_particles(&mut engine.world, delta_time);
+        
+        // Remove expired projectiles and particles
+        for entity in expired_projectiles.into_iter().chain(expired_particles) {
+            let _ = engine.world.despawn(entity);
+        }
+
+        // Camera zoom controls (moved to F keys to free up number keys for weapons)
+        if engine.platform.input.is_key_pressed(Keycode::F1) {
             engine.renderer.camera.set_zoom(1.0);  // Normal view
             info!("On-foot view");
         }
-        if engine.platform.input.is_key_pressed(Keycode::Num2) {
+        if engine.platform.input.is_key_pressed(Keycode::F2) {
             engine.renderer.camera.set_zoom(0.5);  // Zoomed out for wider view
             info!("Wide view");
         }
-        if engine.platform.input.is_key_pressed(Keycode::Num3) {
+        if engine.platform.input.is_key_pressed(Keycode::F4) {
             engine.renderer.camera.set_zoom(0.25);  // Very wide view
             info!("Mech view");
         }
 
-        if engine.platform.input.is_key_pressed(Keycode::R) {
+        if engine.platform.input.is_key_pressed(Keycode::F5) {
             for (_entity, (player, transform)) in
                 engine.world.query_mut::<(&mut Player, &mut Transform)>()
             {
@@ -192,6 +274,7 @@ fn main() -> Result<()> {
         let mut player_max_energy = 100.0;
         let mut player_pos = None;
         let mut player_velocity = None;
+        let mut weapon_info = None;
         
         for (_entity, (player, transform, body)) in engine.world.query::<(&Player, &Transform, &RB)>().iter() {
             player_health = player.health;
@@ -200,6 +283,13 @@ fn main() -> Result<()> {
             player_max_energy = player.max_energy;
             player_pos = Some(transform.position);
             player_velocity = Some(body.velocity);
+        }
+        
+        // Get weapon information from PlayerController
+        for (_entity, controller) in engine.world.query::<&PlayerController>().with::<&Player>().iter() {
+            let weapon = controller.weapon_inventory.current_weapon();
+            let index = controller.weapon_inventory.current_weapon_index;
+            weapon_info = Some((weapon.clone(), index));
         }
         
         let entity_count = engine.world.len() as usize;
@@ -216,6 +306,7 @@ fn main() -> Result<()> {
         ui_manager.update(
             delta_time,
             Some(&ui_player),
+            weapon_info.as_ref().map(|(w, i)| (w, *i)),
             &day_night_cycle,
             entity_count,
             player_pos,
