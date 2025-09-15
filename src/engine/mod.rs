@@ -2,6 +2,7 @@ pub mod core;
 pub mod physics;
 pub mod platform;
 pub mod rendering;
+pub mod ui;
 
 use anyhow::Result;
 

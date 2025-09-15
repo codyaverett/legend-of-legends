@@ -6,12 +6,20 @@ use sdl2::keyboard::Keycode;
 
 pub struct Player {
     pub size: Vec2,
+    pub health: f32,
+    pub max_health: f32,
+    pub energy: f32,
+    pub max_energy: f32,
 }
 
 impl Player {
     pub fn new() -> Self {
         Self {
             size: Vec2::new(24.0, 40.0),
+            health: 100.0,
+            max_health: 100.0,
+            energy: 100.0,
+            max_energy: 100.0,
         }
     }
 }
@@ -57,7 +65,7 @@ pub fn player_movement_system(
     delta_time: f32,
 ) {
     for (_entity, (player, transform, body, controller)) in world.query_mut::<(
-        &Player,
+        &mut Player,
         &mut Transform,
         &mut RigidBody,
         &mut PlayerController,
@@ -81,12 +89,13 @@ pub fn player_movement_system(
                 body.velocity.y = -controller.jump_force;
                 controller.is_grounded = false;
                 controller.jump_count = 1;
-            } else if controller.jump_count < controller.max_jumps {
-                // Double jump in air with booster effect
+            } else if controller.jump_count < controller.max_jumps && player.energy >= 20.0 {
+                // Double jump in air with booster effect (costs energy)
                 body.velocity.y = -controller.double_jump_force;
                 controller.jump_count += 1;
                 controller.is_spinning = true;
                 controller.spin_rotation = 0.0;
+                player.energy = (player.energy - 20.0).max(0.0);
             }
         }
 
@@ -165,6 +174,10 @@ pub fn player_movement_system(
                 controller.is_spinning = false;
                 controller.spin_rotation = 0.0;
                 transform.rotation = 0.0;
+            }
+            // Regenerate energy while grounded
+            if player.energy < player.max_energy {
+                player.energy = (player.energy + 30.0 * delta_time).min(player.max_energy);
             }
         }
     }

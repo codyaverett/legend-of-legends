@@ -10,8 +10,9 @@ use sdl2::keyboard::Keycode;
 use engine::core::{Color, Transform};
 use engine::physics::{Collider, RigidBody};
 use engine::rendering::Sprite;
+use engine::physics::RigidBody as RB;
 use game::states::GameState;
-use game::{DayNightCycle, Level, TILE_SIZE};
+use game::{DayNightCycle, Level, UIManager, TILE_SIZE};
 use systems::player::{player_movement_system, Player, PlayerController};
 
 fn main() -> Result<()> {
@@ -45,6 +46,7 @@ fn main() -> Result<()> {
 
     let _game_state = GameState::default();
     let mut day_night_cycle = DayNightCycle::new();
+    let mut ui_manager = UIManager::new(1280.0, 720.0);
 
     engine.run(move |engine, delta_time| {
         // Update day/night cycle
@@ -73,12 +75,19 @@ fn main() -> Result<()> {
         }
 
         if engine.platform.input.is_key_pressed(Keycode::R) {
-            for (_entity, (_player, transform)) in
-                engine.world.query_mut::<(&Player, &mut Transform)>()
+            for (_entity, (player, transform)) in
+                engine.world.query_mut::<(&mut Player, &mut Transform)>()
             {
                 transform.position = level.spawn_point;
+                player.health = player.max_health;
+                player.energy = player.max_energy;
             }
             info!("Reset player position");
+        }
+
+        if engine.platform.input.is_key_pressed(Keycode::F3) {
+            ui_manager.toggle_debug();
+            info!("Toggled debug overlay");
         }
 
         engine.renderer.camera.update(delta_time);
@@ -175,6 +184,45 @@ fn main() -> Result<()> {
         for (_entity, (transform, sprite)) in engine.world.query::<(&Transform, &Sprite)>().iter() {
             engine.renderer.draw_sprite(sprite, transform);
         }
+
+        // Layer 9: UI Elements (always on top)
+        let mut player_health = 100.0;
+        let mut player_max_health = 100.0;
+        let mut player_energy = 100.0;
+        let mut player_max_energy = 100.0;
+        let mut player_pos = None;
+        let mut player_velocity = None;
+        
+        for (_entity, (player, transform, body)) in engine.world.query::<(&Player, &Transform, &RB)>().iter() {
+            player_health = player.health;
+            player_max_health = player.max_health;
+            player_energy = player.energy;
+            player_max_energy = player.max_energy;
+            player_pos = Some(transform.position);
+            player_velocity = Some(body.velocity);
+        }
+        
+        let entity_count = engine.world.len() as usize;
+        
+        // Create temporary player for UI update
+        let ui_player = Player {
+            size: Vec2::new(24.0, 40.0),
+            health: player_health,
+            max_health: player_max_health,
+            energy: player_energy,
+            max_energy: player_max_energy,
+        };
+        
+        ui_manager.update(
+            delta_time,
+            Some(&ui_player),
+            &day_night_cycle,
+            entity_count,
+            player_pos,
+            player_velocity,
+        );
+        
+        ui_manager.render(&mut engine.renderer);
     })?;
 
     info!("Shutting down...");
