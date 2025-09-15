@@ -1,4 +1,6 @@
 use crate::engine::core::{Color, Rect};
+use crate::engine::rendering::mock_assets::{BuildingAsset, MockAssetGenerator, StreetProp};
+use crate::game::buildings::Building;
 use glam::Vec2;
 
 pub const TILE_SIZE: f32 = 32.0;
@@ -42,16 +44,28 @@ pub struct Level {
     pub width: usize,
     pub height: usize,
     pub spawn_point: Vec2,
+    pub buildings: Vec<Building>,
+    pub background_buildings: Vec<Vec<BuildingAsset>>, // Multiple layers for parallax
+    pub street_props: Vec<StreetProp>,
+    pub sky_gradient: Vec<(Rect, Color)>,
+    pub clouds: Vec<(Vec2, f32, Color)>,
 }
 
 impl Level {
     pub fn new(width: usize, height: usize) -> Self {
         let tiles = vec![vec![Tile::new(TileType::Empty); width]; height];
+        let mut asset_gen = MockAssetGenerator::new(42);
+        
         Self {
             tiles,
             width,
             height,
             spawn_point: Vec2::new(100.0, 100.0),
+            buildings: Vec::new(),
+            background_buildings: Vec::new(),
+            street_props: Vec::new(),
+            sky_gradient: asset_gen.generate_sky_gradient(width as f32 * TILE_SIZE, height as f32 * TILE_SIZE),
+            clouds: Vec::new(),
         }
     }
 
@@ -62,6 +76,7 @@ impl Level {
 
         let mut tiles = vec![vec![Tile::new(TileType::Empty); width]; height];
         let mut spawn_point = Vec2::new(100.0, 100.0);
+        let mut building_positions = Vec::new();
 
         for (y, line) in lines.iter().enumerate() {
             for (x, ch) in line.chars().enumerate() {
@@ -70,6 +85,10 @@ impl Level {
                     '=' => TileType::Platform,
                     '|' => TileType::Wall,
                     'D' => TileType::Destructible,
+                    'B' => {
+                        building_positions.push((x, y));
+                        TileType::Empty
+                    }
                     'S' => {
                         spawn_point = Vec2::new(x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
                         TileType::Empty
@@ -80,11 +99,36 @@ impl Level {
             }
         }
 
+        // Generate procedural assets (sky and clouds only for now)
+        let mut asset_gen = MockAssetGenerator::new(42);
+        
+        let level_width_pixels = width as f32 * TILE_SIZE;
+        // Ground is at the bottom of the level (last 3 rows)
+        let ground_y = (height - 3) as f32 * TILE_SIZE;
+        
+        // No buildings for now
+        let background_buildings = Vec::new();
+        let buildings = Vec::new();
+        let street_props = Vec::new();
+        
+        // Generate clouds spread across the wide sky
+        let mut clouds = Vec::new();
+        for i in 0..20 {  // Clouds across the level
+            let cloud_x = level_width_pixels * 0.05 + i as f32 * (level_width_pixels * 0.9 / 20.0);
+            let cloud_y = 50.0 + (i % 3) as f32 * 80.0;
+            clouds.extend(asset_gen.generate_cloud(cloud_x, cloud_y));
+        }
+
         Self {
             tiles,
             width,
             height,
             spawn_point,
+            buildings,
+            background_buildings,
+            street_props,
+            sky_gradient: asset_gen.generate_sky_gradient(level_width_pixels, height as f32 * TILE_SIZE),
+            clouds,
         }
     }
 
@@ -129,27 +173,43 @@ impl Level {
     }
 
     pub fn test_level_1() -> Self {
-        Self::from_string(
-            "\
-            ..................................................\n\
-            ..................................................\n\
-            ..................................................\n\
-            ..................................................\n\
-            .....S............................................\n\
-            ..................................................\n\
-            ....................==............................\n\
-            ..................................................\n\
-            .............==...................................\n\
-            ..................................................\n\
-            ........==................==......................\n\
-            ..................................................\n\
-            .....==......................................==...\n\
-            ..................................................\n\
-            ..................................==..............\n\
-            ##################################################\n\
-            ##################################################\n\
-            ##################################################\n\
-            ",
-        )
+        // Create a much wider level - assuming ~40 pixels per meter, 2000m = 80,000 pixels / 32 tile size = 2500 tiles
+        let width_in_tiles = 2500;
+        let mut level_str = String::new();
+        
+        // Add empty space above ground (15 rows)
+        for _ in 0..15 {
+            level_str.push_str(&".".repeat(width_in_tiles));
+            level_str.push('\n');
+        }
+        
+        // Add spawn point row (centered)
+        let spawn_row = ".".repeat(width_in_tiles / 2 - 1) + "S" + &".".repeat(width_in_tiles / 2);
+        level_str.push_str(&spawn_row);
+        level_str.push('\n');
+        
+        // Add some platforms at various heights
+        for i in 0..4 {
+            let mut row = ".".repeat(width_in_tiles);
+            if i == 1 {
+                // Add some scattered platforms
+                for j in 0..10 {
+                    let platform_pos = 200 + j * 200;
+                    if platform_pos + 5 < width_in_tiles {
+                        row.replace_range(platform_pos..platform_pos+5, "=====");
+                    }
+                }
+            }
+            level_str.push_str(&row);
+            level_str.push('\n');
+        }
+        
+        // Add ground at the very bottom (3 rows of solid ground)
+        for _ in 0..3 {
+            level_str.push_str(&"#".repeat(width_in_tiles));
+            level_str.push('\n');
+        }
+        
+        Self::from_string(&level_str)
     }
 }

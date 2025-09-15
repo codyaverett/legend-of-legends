@@ -31,9 +31,9 @@ pub struct PlayerController {
 impl PlayerController {
     pub fn new() -> Self {
         Self {
-            speed: 200.0,
-            jump_force: 500.0,
-            double_jump_force: 400.0,
+            speed: 400.0,  // Doubled speed for faster movement
+            jump_force: 600.0,  // Slightly increased jump force
+            double_jump_force: 500.0,  // Increased double jump force
             is_grounded: false,
             jump_count: 0,
             max_jumps: 2,

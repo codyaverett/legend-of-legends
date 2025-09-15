@@ -1,10 +1,14 @@
 pub mod camera;
+pub mod layers;
+pub mod mock_assets;
 pub mod sprite;
 
 use crate::engine::platform::Platform;
 use anyhow::Result;
 
 pub use camera::*;
+pub use layers::*;
+pub use mock_assets::*;
 pub use sprite::*;
 
 pub struct Renderer {
@@ -30,12 +34,14 @@ impl Renderer {
         let screen_pos = self.camera.world_to_screen(transform.position);
         let size = sprite.size * transform.scale * self.camera.zoom;
 
-        let dest = sdl2::rect::Rect::new(
-            (screen_pos.x - size.x / 2.0) as i32,
-            (screen_pos.y - size.y / 2.0) as i32,
-            size.x as u32,
-            size.y as u32,
-        );
+        // Round positions to prevent sub-pixel gaps and add 1 pixel overlap for tiles
+        let x = (screen_pos.x - size.x / 2.0).round() as i32;
+        let y = (screen_pos.y - size.y / 2.0).round() as i32;
+        // Ceiling the size to ensure full coverage (prevents gaps)
+        let width = size.x.ceil() as u32;
+        let height = size.y.ceil() as u32;
+
+        let dest = sdl2::rect::Rect::new(x, y, width, height);
 
         self.canvas.set_draw_color(sprite.color.to_sdl());
         let _ = self.canvas.fill_rect(dest);
