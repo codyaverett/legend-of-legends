@@ -1,6 +1,7 @@
 use crate::engine::core::{Color, Rect};
 use crate::engine::rendering::mock_assets::{BuildingAsset, MockAssetGenerator, StreetProp};
 use crate::game::buildings::Building;
+use crate::game::win_condition::WinCondition;
 use glam::Vec2;
 
 pub const TILE_SIZE: f32 = 32.0;
@@ -49,6 +50,15 @@ pub struct Level {
     pub street_props: Vec<StreetProp>,
     pub sky_gradient: Vec<(Rect, Color)>,
     pub clouds: Vec<(Vec2, f32, Color)>,
+    
+    // Level metadata and objectives
+    pub name: String,
+    pub description: String,
+    pub win_condition: WinCondition,
+    pub goal_position: Option<Vec2>,
+    pub time_limit: Option<f32>,
+    pub collectibles: Vec<(Vec2, bool)>,
+    pub boss_spawn: Option<Vec2>,
 }
 
 impl Level {
@@ -66,6 +76,13 @@ impl Level {
             street_props: Vec::new(),
             sky_gradient: asset_gen.generate_sky_gradient(width as f32 * TILE_SIZE, height as f32 * TILE_SIZE),
             clouds: Vec::new(),
+            name: "Unnamed Level".to_string(),
+            description: "No description".to_string(),
+            win_condition: WinCondition::DefeatAllEnemies,
+            goal_position: None,
+            time_limit: None,
+            collectibles: Vec::new(),
+            boss_spawn: None,
         }
     }
 
@@ -129,6 +146,13 @@ impl Level {
             street_props,
             sky_gradient: asset_gen.generate_sky_gradient(level_width_pixels, height as f32 * TILE_SIZE),
             clouds,
+            name: "Custom Level".to_string(),
+            description: "Complete the objective".to_string(),
+            win_condition: WinCondition::DefeatAllEnemies,
+            goal_position: None,
+            time_limit: None,
+            collectibles: Vec::new(),
+            boss_spawn: None,
         }
     }
 
@@ -210,6 +234,123 @@ impl Level {
             level_str.push('\n');
         }
         
-        Self::from_string(&level_str)
+        let mut level = Self::from_string(&level_str);
+        level.name = "Level 1: First Contact".to_string();
+        level.description = "Defeat all enemy forces".to_string();
+        level.win_condition = WinCondition::DefeatAllEnemies;
+        level
+    }
+    
+    pub fn level_2_reach_goal() -> Self {
+        let width_in_tiles = 500; // Shorter level
+        let mut level_str = String::new();
+        
+        // Build level with spawn on left, goal on right
+        for y in 0..20 {
+            let mut row = String::new();
+            for x in 0..width_in_tiles {
+                if y == 15 && x == 10 {
+                    row.push('S'); // Spawn point
+                } else if y >= 17 {
+                    row.push('#'); // Ground
+                } else if y == 16 && x % 50 == 0 && x > 0 && x < width_in_tiles - 20 {
+                    // Platforms every 50 tiles
+                    for _ in 0..10 {
+                        row.push('=');
+                    }
+                } else {
+                    row.push('.');
+                }
+            }
+            level_str.push_str(&row);
+            level_str.push('\n');
+        }
+        
+        let mut level = Self::from_string(&level_str);
+        level.name = "Level 2: The Journey".to_string();
+        level.description = "Reach the extraction point".to_string();
+        level.goal_position = Some(Vec2::new((width_in_tiles - 20) as f32 * TILE_SIZE, 15.0 * TILE_SIZE));
+        level.win_condition = WinCondition::ReachGoal {
+            position: level.goal_position.unwrap(),
+            radius: 50.0,
+        };
+        level
+    }
+    
+    pub fn level_3_survive() -> Self {
+        let width_in_tiles = 300; // Small arena
+        let mut level_str = String::new();
+        
+        // Build arena-style level
+        for y in 0..20 {
+            let mut row = String::new();
+            for x in 0..width_in_tiles {
+                if y == 15 && x == width_in_tiles / 2 {
+                    row.push('S'); // Spawn in center
+                } else if y >= 17 {
+                    row.push('#'); // Ground
+                } else if y == 14 && (x == 50 || x == width_in_tiles - 50) {
+                    // Side platforms
+                    for _ in 0..20 {
+                        row.push('=');
+                    }
+                } else {
+                    row.push('.');
+                }
+            }
+            level_str.push_str(&row);
+            level_str.push('\n');
+        }
+        
+        let mut level = Self::from_string(&level_str);
+        level.name = "Level 3: Last Stand".to_string();
+        level.description = "Survive the enemy assault for 2 minutes".to_string();
+        level.win_condition = WinCondition::SurviveTime { duration: 120.0 };
+        level
+    }
+    
+    pub fn level_4_collect() -> Self {
+        let width_in_tiles = 800;
+        let mut level = Self::test_level_1(); // Base it on level 1 layout
+        level.name = "Level 4: Scavenger Hunt".to_string();
+        level.description = "Collect 5 power cores".to_string();
+        
+        // Add collectibles at various positions
+        level.collectibles = vec![
+            (Vec2::new(200.0 * TILE_SIZE, 14.0 * TILE_SIZE), false),
+            (Vec2::new(400.0 * TILE_SIZE, 14.0 * TILE_SIZE), false),
+            (Vec2::new(600.0 * TILE_SIZE, 14.0 * TILE_SIZE), false),
+            (Vec2::new(300.0 * TILE_SIZE, 10.0 * TILE_SIZE), false), // On platform
+            (Vec2::new(500.0 * TILE_SIZE, 10.0 * TILE_SIZE), false), // On platform
+        ];
+        
+        level.win_condition = WinCondition::CollectItems { required: 5 };
+        level
+    }
+    
+    pub fn level_5_compound() -> Self {
+        let mut level = Self::level_2_reach_goal();
+        level.name = "Level 5: Multi-Objective".to_string();
+        level.description = "Complete all objectives".to_string();
+        
+        // Add collectibles
+        level.collectibles = vec![
+            (Vec2::new(100.0 * TILE_SIZE, 14.0 * TILE_SIZE), false),
+            (Vec2::new(200.0 * TILE_SIZE, 14.0 * TILE_SIZE), false),
+            (Vec2::new(300.0 * TILE_SIZE, 14.0 * TILE_SIZE), false),
+        ];
+        
+        // Compound win condition
+        level.win_condition = WinCondition::Compound {
+            conditions: vec![
+                WinCondition::CollectItems { required: 3 },
+                WinCondition::ReachGoal {
+                    position: level.goal_position.unwrap(),
+                    radius: 50.0,
+                },
+                WinCondition::DefeatAllEnemies,
+            ],
+        };
+        level
     }
 }

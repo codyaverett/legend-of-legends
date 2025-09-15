@@ -3,6 +3,8 @@ pub enum GameState {
     Playing(PlayState),
     Paused,
     GameOver,
+    LevelComplete,
+    LevelTransition,
 }
 
 pub enum PlayState {

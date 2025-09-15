@@ -11,13 +11,15 @@ use engine::core::{Color, Transform};
 use engine::physics::{Collider, RigidBody};
 use engine::rendering::Sprite;
 use engine::physics::RigidBody as RB;
+use engine::ui::Minimap;
 use game::states::GameState;
-use game::{DayNightCycle, Level, UIManager, TILE_SIZE};
+use game::{DayNightCycle, Level, LevelManager, UIManager, WinProgress, TILE_SIZE};
 use systems::player::{player_movement_system, player_shooting_system, Player, PlayerController};
 use systems::enemy::{Enemy, EnemyController, enemy_ai_system, enemy_physics_system};
 use systems::projectile::{Projectile, ProjectileOwner, projectile_system};
 use systems::particles::{update_particles};
 use systems::enemy_spawner::EnemySpawner;
+use systems::win_condition_system::{check_win_conditions, check_collectibles, spawn_collectibles, spawn_goal_marker};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -25,14 +27,17 @@ fn main() -> Result<()> {
 
     let mut engine = engine::Engine::new("Legends of Legend", 1280, 720)?;
 
-    let level = Level::test_level_1();
-    let spawn_pos = level.spawn_point;
-    
-    // Position camera to show ground at bottom of screen
-    // Ground is at (height - 3) * TILE_SIZE, we want it at bottom of 720px viewport
-    let ground_y = (level.height - 3) as f32 * TILE_SIZE;
-    let camera_y = ground_y - 600.0 / 2.0 + 500.0;  // Position camera so ground is near bottom
-    engine.renderer.camera.position = Vec2::new(spawn_pos.x, camera_y);
+    let mut level_manager = LevelManager::new();
+    let spawn_pos = {
+        let level = level_manager.get_current_level();
+        let spawn = level.spawn_point;
+        // Position camera to show ground at bottom of screen
+        // Ground is at (height - 3) * TILE_SIZE, we want it at bottom of 720px viewport
+        let ground_y = (level.height - 3) as f32 * TILE_SIZE;
+        let camera_y = ground_y - 600.0 / 2.0 + 500.0;  // Position camera so ground is near bottom
+        engine.renderer.camera.position = Vec2::new(spawn.x, camera_y);
+        spawn
+    };
 
     let player_entity = engine.world.spawn((
         Player::new(),
@@ -71,11 +76,19 @@ fn main() -> Result<()> {
     }
 
     info!("Created player entity: {:?}", player_entity);
-    info!("Level size: {}x{}", level.width, level.height);
+    {
+        let level = level_manager.get_current_level();
+        info!("Level size: {}x{}", level.width, level.height);
+    }
 
     let _game_state = GameState::default();
     let mut day_night_cycle = DayNightCycle::new();
     let mut ui_manager = UIManager::new(1280.0, 720.0);
+    
+    // Create minimap in top-right corner
+    let minimap_pos = Vec2::new(1280.0 - 160.0 - 20.0, 20.0);  // 20px margin from edges
+    let minimap_size = Vec2::new(150.0, 150.0);
+    let mut minimap = Minimap::new(minimap_pos, minimap_size);
 
     engine.run(move |engine, delta_time| {
         // Update day/night cycle
@@ -83,10 +96,11 @@ fn main() -> Result<()> {
         // Clear with black instead of sky blue (sky will be drawn as gradient)
         engine.renderer.clear(Color::new(0, 0, 0, 255));
 
+        let level = level_manager.get_current_level();
         player_movement_system(
             &mut engine.world,
             &engine.platform.input,
-            &level,
+            level,
             delta_time,
         );
 
@@ -94,7 +108,7 @@ fn main() -> Result<()> {
         enemy_spawner.update(&mut engine.world, delta_time);
         
         // Update enemy physics
-        enemy_physics_system(&mut engine.world, &level, delta_time);
+        enemy_physics_system(&mut engine.world, level, delta_time);
 
         // Player shooting system
         let player_projectiles = player_shooting_system(
@@ -136,7 +150,7 @@ fn main() -> Result<()> {
         }
 
         // Update projectiles with physics and check collisions
-        let (expired_projectiles, new_particles) = projectile_system(&mut engine.world, &level, delta_time);
+        let (expired_projectiles, new_particles) = projectile_system(&mut engine.world, level, delta_time);
         
         // Spawn new particles from projectile impacts
         for particle in new_particles {
@@ -363,6 +377,15 @@ fn main() -> Result<()> {
         let mut player_velocity = None;
         let mut weapon_info = None;
         
+        // Collect enemy positions for minimap
+        let mut enemy_positions = Vec::new();
+        for (_entity, (enemy, transform)) in engine.world.query::<(&Enemy, &Transform)>().iter() {
+            if enemy.health > 0.0 {
+                let is_boss = enemy.enemy_type == systems::enemy::EnemyType::Tank; // Future boss type
+                enemy_positions.push((transform.position, is_boss));
+            }
+        }
+        
         for (_entity, (player, transform, body)) in engine.world.query::<(&Player, &Transform, &RB)>().iter() {
             player_health = player.health;
             player_max_health = player.max_health;
@@ -401,6 +424,28 @@ fn main() -> Result<()> {
         );
         
         ui_manager.render(&mut engine.renderer);
+        
+        // Render minimap
+        if let Some(player_position) = player_pos {
+            let level = level_manager.get_current_level();
+            let collectibles: Vec<Vec2> = level.collectibles
+                .iter()
+                .filter(|(_, collected)| !collected)
+                .map(|(pos, _)| *pos)
+                .collect();
+            
+            let camera_pos = engine.renderer.camera.position;
+            let goal_pos = level.goal_position;
+            
+            minimap.render(
+                &mut engine.renderer,
+                player_position,
+                &enemy_positions,
+                &collectibles,
+                goal_pos,
+                Vec2::ZERO,  // Camera offset should be zero for screen-space UI
+            );
+        }
     })?;
 
     info!("Shutting down...");

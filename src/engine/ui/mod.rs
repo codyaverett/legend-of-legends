@@ -3,11 +3,13 @@ pub mod clock;
 pub mod debug;
 pub mod font;
 pub mod layout;
+pub mod minimap;
 
 pub use components::*;
 pub use clock::*;
 pub use debug::*;
 pub use layout::*;
+pub use minimap::*;
 
 use glam::Vec2;
 use crate::engine::core::Color;

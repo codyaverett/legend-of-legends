@@ -63,7 +63,7 @@ impl EnemySpawner {
         let spawn_pos = Vec2::new(base_pos.x + offset_x, base_pos.y);
         
         // Create enemy with scaled stats based on difficulty
-        let mut enemy = Enemy::new();
+        let mut enemy = Enemy::ranger(); // Use Ranger type explicitly
         enemy.health *= self.difficulty_multiplier;
         enemy.max_health *= self.difficulty_multiplier;
         enemy.damage *= self.difficulty_multiplier;
