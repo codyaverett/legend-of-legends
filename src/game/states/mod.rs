@@ -7,6 +7,7 @@ pub enum GameState {
     LevelTransition,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlayState {
     OnFoot,
     InMech,

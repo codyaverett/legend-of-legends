@@ -12,7 +12,7 @@ use engine::physics::{Collider, RigidBody};
 use engine::rendering::Sprite;
 use engine::physics::RigidBody as RB;
 use engine::ui::Minimap;
-use game::states::GameState;
+use game::states::{GameState, PlayState};
 use game::{DayNightCycle, Level, LevelManager, UIManager, WinProgress, TILE_SIZE};
 use systems::player::{player_movement_system, player_shooting_system, Player, PlayerController};
 use systems::enemy::{Enemy, EnemyController, enemy_ai_system, enemy_physics_system};
@@ -20,6 +20,7 @@ use systems::projectile::{Projectile, ProjectileOwner, projectile_system};
 use systems::particles::{update_particles};
 use systems::enemy_spawner::EnemySpawner;
 use systems::win_condition_system::{check_win_conditions, check_collectibles, spawn_collectibles, spawn_goal_marker};
+use systems::mech::{Mech, MechController, MechWeaponInventory, mech_movement_system, spawn_mech, enter_mech, exit_mech, find_nearest_mech};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -81,7 +82,14 @@ fn main() -> Result<()> {
         info!("Level size: {}x{}", level.width, level.height);
     }
 
-    let _game_state = GameState::default();
+    let mut game_state = GameState::default();
+    let mut current_play_mode = PlayState::OnFoot;
+    let mut current_pilot_entity = Some(player_entity);
+    let mut current_mech_entity: Option<hecs::Entity> = None;
+    
+    // Spawn a mech near the player for testing
+    let mech_entity = spawn_mech(&mut engine.world, Vec2::new(spawn_pos.x + 200.0, spawn_pos.y));
+    info!("Spawned test mech: {:?}", mech_entity);
     let mut day_night_cycle = DayNightCycle::new();
     let mut ui_manager = UIManager::new(1280.0, 720.0);
     
@@ -97,12 +105,66 @@ fn main() -> Result<()> {
         engine.renderer.clear(Color::new(0, 0, 0, 255));
 
         let level = level_manager.get_current_level();
-        player_movement_system(
-            &mut engine.world,
-            &engine.platform.input,
-            level,
-            delta_time,
-        );
+        
+        // Handle mech entry/exit with E key
+        if engine.platform.input.is_key_pressed(Keycode::E) {
+            match current_play_mode {
+                PlayState::OnFoot => {
+                    // Try to enter a nearby mech
+                    if let Some(pilot_entity) = current_pilot_entity {
+                        let pilot_pos = if let Ok(transform) = engine.world.get::<&Transform>(pilot_entity) {
+                            Some(transform.position)
+                        } else {
+                            None
+                        };
+                        
+                        if let Some(pos) = pilot_pos {
+                            if let Some(mech) = find_nearest_mech(&engine.world, pos, 100.0) {
+                                let result = enter_mech(&mut engine.world, pilot_entity, mech);
+                                if result.success {
+                                    current_play_mode = PlayState::InMech;
+                                    current_mech_entity = Some(mech);
+                                    info!("{}", result.message);
+                                }
+                            }
+                        }
+                    }
+                },
+                PlayState::InMech => {
+                    // Exit the current mech
+                    if let Some(mech) = current_mech_entity {
+                        let result = exit_mech(&mut engine.world, mech);
+                        if result.success {
+                            current_play_mode = PlayState::OnFoot;
+                            current_mech_entity = None;
+                            info!("{}", result.message);
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        
+        // Run appropriate movement system based on current mode
+        match current_play_mode {
+            PlayState::OnFoot => {
+                player_movement_system(
+                    &mut engine.world,
+                    &engine.platform.input,
+                    level,
+                    delta_time,
+                );
+            },
+            PlayState::InMech => {
+                mech_movement_system(
+                    &mut engine.world,
+                    &engine.platform.input,
+                    level,
+                    delta_time,
+                );
+            },
+            _ => {}
+        }
 
         // Update enemy spawner
         enemy_spawner.update(&mut engine.world, delta_time);
@@ -110,13 +172,17 @@ fn main() -> Result<()> {
         // Update enemy physics
         enemy_physics_system(&mut engine.world, level, delta_time);
 
-        // Player shooting system
-        let player_projectiles = player_shooting_system(
-            &mut engine.world,
-            &engine.platform.input,
-            &engine.renderer.camera,
-            delta_time,
-        );
+        // Player/Mech shooting system
+        let player_projectiles = if current_play_mode == PlayState::OnFoot {
+            player_shooting_system(
+                &mut engine.world,
+                &engine.platform.input,
+                &engine.renderer.camera,
+                delta_time,
+            )
+        } else {
+            Vec::new() // TODO: Implement mech shooting system
+        };
         
         for spawn_data in player_projectiles {
             let mut body = RigidBody::new(0.1);
@@ -166,6 +232,20 @@ fn main() -> Result<()> {
         }
 
         // Camera zoom controls (moved to F keys to free up number keys for weapons)
+        // Auto-adjust zoom based on play mode
+        let target_zoom = match current_play_mode {
+            PlayState::OnFoot => 1.0,
+            PlayState::InMech => 0.5,
+            _ => engine.renderer.camera.zoom,
+        };
+        
+        // Smoothly transition camera zoom
+        let zoom_speed = 3.0;
+        let current_zoom = engine.renderer.camera.zoom;
+        let new_zoom = current_zoom + (target_zoom - current_zoom) * zoom_speed * delta_time;
+        engine.renderer.camera.set_zoom(new_zoom);
+        
+        // Manual zoom override
         if engine.platform.input.is_key_pressed(Keycode::F1) {
             engine.renderer.camera.set_zoom(1.0);  // Normal view
             info!("On-foot view");
@@ -197,21 +277,29 @@ fn main() -> Result<()> {
 
         engine.renderer.camera.update(delta_time);
 
-        for (_entity, (_player, transform)) in engine.world.query::<(&Player, &Transform)>().iter()
-        {
-            // Follow player horizontally, but limit vertical movement to keep ground visible
-            let ground_y = (level.height - 3) as f32 * TILE_SIZE;
-            let min_camera_y = ground_y - 720.0 / engine.renderer.camera.zoom / 2.0 + 100.0;
-            
-            let target_pos = Vec2::new(
-                transform.position.x,
-                transform.position.y.max(min_camera_y)
-            );
-            
-            engine
-                .renderer
-                .camera
-                .follow(target_pos, 5.0, delta_time);
+        // Camera follow logic based on current mode
+        let follow_entity = if current_play_mode == PlayState::InMech {
+            current_mech_entity
+        } else {
+            current_pilot_entity
+        };
+        
+        if let Some(entity) = follow_entity {
+            if let Ok(transform) = engine.world.get::<&Transform>(entity) {
+                // Follow entity horizontally, but limit vertical movement to keep ground visible
+                let ground_y = (level.height - 3) as f32 * TILE_SIZE;
+                let min_camera_y = ground_y - 720.0 / engine.renderer.camera.zoom / 2.0 + 100.0;
+                
+                let target_pos = Vec2::new(
+                    transform.position.x,
+                    transform.position.y.max(min_camera_y)
+                );
+                
+                engine
+                    .renderer
+                    .camera
+                    .follow(target_pos, 5.0, delta_time);
+            }
         }
 
         // === LAYERED RENDERING ===
@@ -386,25 +474,45 @@ fn main() -> Result<()> {
             }
         }
         
-        for (_entity, (player, transform, body)) in engine.world.query::<(&Player, &Transform, &RB)>().iter() {
-            player_health = player.health;
-            player_max_health = player.max_health;
-            player_energy = player.energy;
-            player_max_energy = player.max_energy;
-            player_pos = Some(transform.position);
-            player_velocity = Some(body.velocity);
-        }
-        
-        // Get weapon information from PlayerController
-        for (_entity, controller) in engine.world.query::<&PlayerController>().with::<&Player>().iter() {
-            let weapon = controller.weapon_inventory.current_weapon();
-            let index = controller.weapon_inventory.current_weapon_index;
-            weapon_info = Some((weapon.clone(), index));
+        // Get stats based on current play mode
+        if current_play_mode == PlayState::InMech {
+            // Get mech stats
+            if let Some(mech_entity) = current_mech_entity {
+                if let Ok(mech) = engine.world.get::<&Mech>(mech_entity) {
+                    player_health = mech.health;
+                    player_max_health = mech.max_health;
+                    player_energy = mech.energy;
+                    player_max_energy = mech.max_energy;
+                }
+                if let Ok(transform) = engine.world.get::<&Transform>(mech_entity) {
+                    player_pos = Some(transform.position);
+                }
+                if let Ok(body) = engine.world.get::<&RB>(mech_entity) {
+                    player_velocity = Some(body.velocity);
+                }
+            }
+        } else {
+            // Get player stats
+            for (_entity, (player, transform, body)) in engine.world.query::<(&Player, &Transform, &RB)>().iter() {
+                player_health = player.health;
+                player_max_health = player.max_health;
+                player_energy = player.energy;
+                player_max_energy = player.max_energy;
+                player_pos = Some(transform.position);
+                player_velocity = Some(body.velocity);
+            }
+            
+            // Get weapon information from PlayerController
+            for (_entity, controller) in engine.world.query::<&PlayerController>().with::<&Player>().iter() {
+                let weapon = controller.weapon_inventory.current_weapon();
+                let index = controller.weapon_inventory.current_weapon_index;
+                weapon_info = Some((weapon.clone(), index));
+            }
         }
         
         let entity_count = engine.world.len() as usize;
         
-        // Create temporary player for UI update
+        // Create temporary player for UI update (works for both player and mech)
         let ui_player = Player {
             size: Vec2::new(24.0, 40.0),
             health: player_health,
